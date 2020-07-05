@@ -1,0 +1,93 @@
+---
+version: '3.8'
+services:
+  traefik:
+    container_name: traefik
+    image: traefik:chevrotin
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - 443:443
+      - 8080:8080
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      # Use either .toml files or .yml
+      # - ./conf/traefik.toml:/etc/traefik/traefik.toml:ro
+      # - ./conf/traefik_dynamic.toml:/etc/traefik/traefik_dynamic.toml:ro
+      - ./conf/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./conf/traefik_dynamic.yml:/etc/traefik/traefik_dynamic.yml:ro
+      - ./conf/acme.json:/acme.json
+
+  sqlwp:
+    container_name: sqlwp
+    image: mariadb:bionic
+    restart: unless-stopped
+    volumes:
+      - datasqlwp:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: '{/9(5f5-7jZfYa$s#NYB}J'
+      MYSQL_USER: wpsqluser
+      MYSQL_PASSWORD: 'b9aHsZ2WtZL32dFTqwkjDvLs'
+      MYSQL_DATABASE: wpdb
+    labels:
+      traefik.enable: false
+ 
+  nginxwp:
+    container_name: nginxforwp
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - datawp:/var/www/html
+      - datanginxlogs:/var/log/nginx/
+      - ./conf/nginx-wp:/etc/nginx/
+    links:
+      - wp
+    labels:
+      traefik.enable: true
+      traefik.http.routers.nginxwp-http.rule: Host(`wp.czs.local`)
+      traefik.http.routers.nginxwp-http.entrypoints: web
+      traefik.http.routers.nginxwp-http.middlewares: https-redirect@file
+      traefik.http.routers.nginxwp-https.rule: Host(`wp.czs.local`)
+      traefik.http.routers.nginxwp-https.entrypoints: websecure
+      traefik.http.routers.nginxwp-https.middlewares: security@file, compression@file
+      traefik.http.routers.nginxwp-https.tls: true
+      traefik.http.routers.nginxwp-https.tls.certresolver: letsencrypt
+
+  wp:
+    container_name: wpapp
+    image: wordpress:5-php7.4-fpm-alpine
+    restart: unless-stopped
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./conf/php.ini:/usr/local/etc/php/php.ini
+      - datawp:/var/www/html
+    depends_on:
+      - sqlwp
+    environment:
+      WORDPRESS_DB_HOST: sqlwp
+      WORDPRESS_DB_USER: wpsqluser
+      WORDPRESS_DB_PASSWORD: 'sqlpassword'
+      WORDPRESS_DB_NAME: wpdb
+      WORDPRESS_TABLE_PREFIX: intel
+    labels:
+      traefik.enable: false
+
+  redis:
+    container_name: redis
+    image: redis:6
+    restart: unless-stopped
+    volumes:
+      - dataredis:/data
+    labels:
+      traefik.enable: false
+
+volumes:
+  datasqlwp:
+  datanginxlogs:
+  datawp:
+  dataredis:
